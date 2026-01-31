@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>CoCo 3 Remote WindInt</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+    <style>
+        body {
+            background: #111;
+            color: #ddd;
+            font-family: sans-serif;
+        }
+
+        #container {
+            position: relative;
+            width: 640px;
+            height: 400px;
+            background: black;
+            border: 1px solid #444;
+            margin: 20px auto;
+        }
+
+        canvas,
+        #terminal {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #terminal {
+            z-index: 10;
+        }
+
+        .xterm-viewport,
+        .xterm-screen {
+            background: transparent !important;
+        }
+
+        #helpOverlay {
+            display: none;
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            width: 80%;
+            background: rgba(0, 0, 0, 0.9);
+            color: #00FF00;
+            border: 2px solid #333;
+            padding: 20px;
+            z-index: 100;
+            font-family: monospace;
+        }
+
+        .key-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            border-bottom: 1px dotted #333;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="helpOverlay">
+        <h2>🌶️ Pico-de-GIME Reference</h2>
+        <div class="key-row"><span>PC Up Arrow</span><span>OS-9 Cursor Up (0x0C)</span></div>
+        <div class="key-row"><span>PC Down Arrow</span><span>OS-9 Cursor Down (0x0A)</span></div>
+        <div class="key-row"><span>PC Escape</span><span>OS-9 BREAK (0x03)</span></div>
+        <div class="key-row"><span>PC Home</span><span>OS-9 Home (0x01)</span></div>
+        <div class="key-row"><span>PC Delete</span><span>OS-9 Erase Line (0x18)</span></div>
+        <div class="key-row"><span>PC F1</span><span>Toggle This Help</span></div>
+        <p style="text-align:center; color:#aaa;">Press F1 to close</p>
+    </div>
+
+    <div id="container">
+        <canvas id="gfxLayer" width="640" height="400"></canvas>
+        <div id="terminal"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gfxLayer');
+        const ctx = canvas.getContext('2d');
+        const term = new Terminal({ cols: 80, rows: 24, theme: { background: 'transparent' } });
+        term.open(document.getElementById('terminal'));
+
+        let pen = { x: 0, y: 0, color: '#FFFFFF' };
+        const socket = new WebSocket('ws://' + location.host + '/ws');
+
+        const splashArt = `
+\x1b[32m  _____  _              \x1b[33m     _               \x1b[31m  _____  _____ __  __ ______ 
+\x1b[32m |  __ \\(_)             \x1b[33m    | |              \x1b[31m / ____||_   _|  \\/  |  ____|
+\x1b[32m | |__) |_  ___ ___     \x1b[33m  __| | ___          \x1b[31m| |  __   | | | \\  / | |__   
+\x1b[32m |  ___/| |/ __/ _ \\    \x1b[33m / _\` |/ _ \\         \x1b[31m| | |_ |  | | | |\\/| |  __|  
+\x1b[32m | |    | | (_| (_) |   \x1b[33m| (_| |  __/         \x1b[31m| |__| | _| |_| |  | | |____ 
+\x1b[32m |_|    |_|\\___\\___/    \x1b[33m \\__,_|\\___|         \x1b[31m \\_____||_____|_|  |_|______|
+\x1b[0m
+          \x1b[1m-- Wireless WindInt Terminal Bridge for CoCo 3 --\x1b[0m
+             \x1b[3m"Spicing up the 6809 experience since 2026"\x1b[0m
+\x1b[90m--------------------------------------------------------------------------------\x1b[0m
+`;
+
+        // To display it, call this when the socket opens:
+        socket.onopen = () => {
+            term.write(splashArt);
+            term.write("Connecting to Pico W at " + location.host + "...\\r\\n");
+        };
+
+        socket.onmessage = (ev) => {
+            const data = JSON.parse(ev.data);
+            if (data.status === "BOOT_READY") {
+                term.write("\x1b[32m[OK]\x1b[0m GIME Stream Synchronized.\r\n");
+            }
+            if (data.t === "txt") {
+                if (data.clr_gfx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                term.write(data.d);
+            } else if (data.t === "gfx") {
+                handleGraphics(data);
+            }
+        };
+
+        // OS-9 Key Mapping
+        const KEY_MAP = {
+            '\x1b[A': '\x0c', // Up -> 0x0C
+            '\x1b[B': '\x0a', // Down -> 0x0A
+            '\x1b[C': '\x09', // Right -> 0x09
+            '\x1b[D': '\x08', // Left -> 0x08
+            '\x1b[H': '\x01', // Home -> 0x01
+            '\x1b': '\x03', // ESC -> BREAK (0x03)
+            '\x1b[3~': '\x18' // Delete -> Erase Line (0x18)
+        };
+
+        // Capture keystrokes and send to Pico
+        term.onData(data => {
+            if (socket.readyState === WebSocket.OPEN) {
+                const payload = KEY_MAP[data] || data;
+                socket.send(payload);
+            }
+        });
+
+        function handleGraphics(msg) {
+            ctx.strokeStyle = pen.color;
+            ctx.fillStyle = pen.color;
+            const p = msg.p;
+
+            switch (msg.cmd) {
+                case "move": pen.x = p[0]; pen.y = p[1]; break;
+                case "line":
+                    ctx.beginPath(); ctx.moveTo(pen.x, pen.y);
+                    ctx.lineTo(p[0], p[1]); ctx.stroke();
+                    pen.x = p[0]; pen.y = p[1];
+                    break;
+                case "circle":
+                    ctx.beginPath(); ctx.arc(pen.x, pen.y, p[0], 0, 2 * Math.PI);
+                    ctx.stroke(); break;
+            }
+        }
+
+        // Help Overlay Toggle (F1)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F1') {
+                e.preventDefault();
+                const el = document.getElementById('helpOverlay');
+                el.style.display = el.style.display === 'block' ? 'none' : 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>

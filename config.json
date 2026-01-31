@@ -1,0 +1,9 @@
+{
+    "SSID": "Your_WiFi_Name",
+    "PASS": "Your_WiFi_Password",
+    "UART_ID": 0,
+    "BAUD": 9600,
+    "X_OFFSET": 32,
+    "Y_OFFSET": 32,
+    "WEB_PORT": 80
+}
