@@ -5,7 +5,16 @@ import json
 import gc
 import sys
 import time
+import os
 import dependency_manager
+
+# Add lib to path if not present
+if '/lib' not in sys.path:
+    sys.path.append('/lib')
+
+# Debug: Print Path
+print(f"BM: sys.path: {sys.path}")
+
 
 # --- PARAMETERS ---
 DEFAULT_CONFIG = {
@@ -31,19 +40,64 @@ CONFIG = load_config()
 
 # --- DEPENDENCY CHECK ---
 dm = dependency_manager.DependencyManager(CONFIG["SSID"], CONFIG["PASS"])
+
+# Manual fallback URLs for Microdot in case mip fails
+MICRODOT_FILES = {
+    "__init__.py": "https://raw.githubusercontent.com/miguelgrinberg/microdot/main/src/microdot/__init__.py",
+    "microdot.py": "https://raw.githubusercontent.com/miguelgrinberg/microdot/main/src/microdot/microdot.py",
+    "helpers.py": "https://raw.githubusercontent.com/miguelgrinberg/microdot/main/src/microdot/helpers.py",
+    "websocket.py": "https://raw.githubusercontent.com/miguelgrinberg/microdot/main/src/microdot/websocket.py",
+    "cors.py": "https://raw.githubusercontent.com/miguelgrinberg/microdot/main/src/microdot/cors.py"
+}
+
 # Ensure microdot is installed (requires WiFi if missing)
-# Note: 'microdot' package usually includes websocket in standard mip repo, 
-# but if explicit 'microdot-websocket' is needed, add it here.
-if not dm.ensure_package("microdot"):
+# We try to use the manual file map if mip fails
+if not dm.ensure_package("github:miguelgrinberg/microdot", "microdot", manual_files=MICRODOT_FILES):
     print("CRITICAL: Failed to load 'microdot'. System cannot start.")
+    print("Please check your WiFi credentials in config.json or manually install 'microdot' in /lib.")
     # Blink LED or other error signal could go here
     pass
+
+# Check if all files are valid Python
+for fname in ['__init__.py', 'microdot.py', 'helpers.py', 'websocket.py', 'cors.py']:
+    try:
+        path = f'/lib/microdot/{fname}'
+        with open(path, 'r') as f:
+            content = f.read(50)
+            if content.strip().startswith('<') or '404' in content: # Detect HTML or 404
+                print(f"CRITICAL: {fname} appears to be invalid/HTML. Deleting...")
+                # Cleanup
+                try: 
+                    for fn in os.listdir('/lib/microdot'):
+                        os.remove(f'/lib/microdot/{fn}')
+                    os.rmdir('/lib/microdot')
+                except: pass
+                break
+            
+            # Debug: print start of file
+            print(f"BM: Checked {fname} OK. Start: {content[:20]}")
+            
+    except OSError:
+        print(f"CRITICAL: {fname} is missing. Corrupt installation detected.")
+        # Cleanup
+        try: 
+            for fn in os.listdir('/lib/microdot'):
+                os.remove(f'/lib/microdot/{fn}')
+            os.rmdir('/lib/microdot')
+            print("Deleted corrupt microdot library. System will reboot to re-download.")
+            time.sleep(2)
+            machine.reset()
+        except: 
+            print("Cleanup failed. Please delete /lib/microdot manually.")
+            pass
+        break
 
 try:
     from microdot import Microdot, send_file
     from microdot.websocket import with_websocket
-except ImportError:
-    print("Error: Microdot library missing and could not be installed.")
+except ImportError as e:
+    print(f"Error: Microdot library import failed: {e}")
+    print("Halted. (Boot loop prevented)")
     # Fallback or exit
     sys.exit(1)
 
@@ -161,14 +215,12 @@ async def coco_socket(request, ws):
     async def uart_to_browser():
         try:
             while True:
-                # Feed the Watchdog (assuming this is the main active loop)
                 wdt.feed()
-                
                 if uart.any():
-                    chunk = uart.read(uart.any())
-                    for byte in chunk:
-                        await protocol.process_byte(byte, ws)
-                
+                    chunk = uart.read()
+                    if chunk:
+                        for byte in chunk:
+                            await protocol.process_byte(byte, ws)
                 await asyncio.sleep(0.01)
         except Exception as e:
             log.error(f"UART Reader Task Failed: {e}")
@@ -178,9 +230,7 @@ async def coco_socket(request, ws):
     sender_task = asyncio.create_task(uart_to_browser())
 
     try:
-        # Loop: Browser -> UART (Main handler loop blocks here waiting for input)
         while True:
-            # Receive data from browser (keystrokes)
             data = await ws.receive()
             if data:
                 uart.write(data)
@@ -198,6 +248,8 @@ async def wifi_manager():
             if not wlan.isconnected():
                 log.info("Connecting to Wi-Fi...")
                 wlan.connect(CONFIG["SSID"], CONFIG["PASS"])
+                
+                # Wait for connection
                 for _ in range(20):
                     if wlan.isconnected(): break
                     await asyncio.sleep(0.5)
@@ -207,7 +259,7 @@ async def wifi_manager():
                 else:
                     log.warn("WiFi Connection Failed. Retrying...")
             
-            # Periodic GC to prevent heap fragmentation
+            # Periodic GC
             gc.collect()
             await asyncio.sleep(30)
         except Exception as e:
@@ -221,6 +273,7 @@ async def run_app():
 
 if __name__ == '__main__':
     try:
+        # Start the event loop
         asyncio.run(run_app())
     except KeyboardInterrupt:
         log.info("System stopped by user.")
