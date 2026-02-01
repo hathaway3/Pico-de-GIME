@@ -102,22 +102,51 @@ except ImportError as e:
     # Fallback or exit
     sys.exit(1)
 
+# --- GLOBAL STATS ---
+TX_BYTES = 0
+RX_BYTES = 0
+START_TIME = time.time()
+
 # --- LOGGING ---
 class Logger:
-    def info(self, msg):
-        print(f"[INFO] {time.ticks_ms()/1000:.3f}: {msg}")
+    def __init__(self):
+        self.buffer = []
+        self.max_lines = 20
 
-    def warn(self, msg):
-        print(f"[WARN] {time.ticks_ms()/1000:.3f}: {msg}")
+    def _log(self, level, msg):
+        timestamp = time.ticks_ms()/1000
+        formatted = f"[{level}] {timestamp:.3f}: {msg}"
+        print(formatted)
+        
+        # Add to buffer
+        self.buffer.append(formatted)
+        if len(self.buffer) > self.max_lines:
+            self.buffer.pop(0)
 
-    def error(self, msg):
-        print(f"[ERROR] {time.ticks_ms()/1000:.3f}: {msg}")
+    def info(self, msg): self._log("INFO", msg)
+    def warn(self, msg): self._log("WARN", msg)
+    def error(self, msg): self._log("ERROR", msg)
+    
+    def get_logs(self):
+        return self.buffer
 
 log = Logger()
 
 # --- HARDWARE INITIALIZATION ---
 try:
-    uart = machine.UART(CONFIG["UART_ID"], baudrate=CONFIG["BAUD"], tx=machine.Pin(0), rx=machine.Pin(1), timeout=0)
+    # Map UART ID to (TX_PIN, RX_PIN)
+    # UART0 usually on GP0/1, UART1 on GP4/5 for standard Pico pinout
+    UART_PINS = {
+        0: (0, 1),
+        1: (4, 5)
+    }
+    
+    uid = CONFIG.get("UART_ID", 0)
+    tx_pin, rx_pin = UART_PINS.get(uid, (0, 1))
+    
+    log.info(f"Initializing UART {uid} on TX=GP{tx_pin}, RX=GP{rx_pin}")
+    uart = machine.UART(uid, baudrate=CONFIG["BAUD"], tx=machine.Pin(tx_pin), rx=machine.Pin(rx_pin), timeout=0)
+    
     if CONFIG.get("WDT_ENABLED", True):
         wdt = machine.WDT(timeout=8000) # Watchdog timer (8 seconds)
     else:
@@ -209,22 +238,72 @@ app = Microdot()
 async def index(request):
     return send_file('index.html')
 
+@app.route('/setup')
+async def page_setup(request):
+    return send_file('setup.html')
+
+@app.route('/debug')
+async def page_debug(request):
+    return send_file('debug.html')
+
+# --- API ---
+@app.route('/api/status')
+async def api_status(request):
+    gc.collect() # Force cleanup to get a stable base reading
+    wlan = network.WLAN(network.STA_IF)
+    status = {
+        "uptime": time.time() - START_TIME,
+        "rssi": wlan.status('rssi') if wlan.isconnected() else 0,
+        "free_ram": gc.mem_free(),
+        "tx_bytes": TX_BYTES,
+        "rx_bytes": RX_BYTES,
+        "logs": log.get_logs()
+    }
+    return json.dumps(status), 200, {'Content-Type': 'application/json'}
+
+@app.route('/api/config', methods=['GET', 'POST'])
+async def api_config(request):
+    if request.method == 'POST':
+        try:
+            new_config = request.json
+            # Basic validation
+            if "BAUD" in new_config: int(new_config["BAUD"])
+            if "UART_ID" in new_config: int(new_config["UART_ID"])
+            
+            # Save
+            with open('config.json', 'w') as f:
+                json.dump(new_config, f)
+            
+            log.warn("Config updated via API. Rebooting...")
+            asyncio.create_task(do_reboot())
+            return json.dumps({"status": "OK", "msg": "Saved. Rebooting..."})
+        except Exception as e:
+            return json.dumps({"status": "ERROR", "msg": str(e)}), 400
+            
+    return json.dumps(CONFIG), 200, {'Content-Type': 'application/json'}
+
+async def do_reboot():
+    await asyncio.sleep(1)
+    machine.reset()
+
 @app.route('/ws')
 @with_websocket
 async def coco_socket(request, ws):
+    global RX_BYTES, TX_BYTES
     log.info("Client connected")
     await ws.send(json.dumps({"status": "BOOT_READY"}))
     protocol = WindIntProtocol()
     
-
     # Task: UART -> Browser
     async def uart_to_browser():
+        global RX_BYTES
         try:
             while True:
                 # wdt.feed() handled by global heartbeat
                 if uart.any():
                     chunk = uart.read()
                     if chunk:
+                        RX_BYTES += len(chunk)
                         for byte in chunk:
                             await protocol.process_byte(byte, ws)
                 await asyncio.sleep(0.01)
@@ -239,6 +318,7 @@ async def coco_socket(request, ws):
         while True:
             data = await ws.receive()
             if data:
+                TX_BYTES += len(data)
                 uart.write(data)
     except Exception as e:
         log.error(f"WS Error: {e}")
@@ -286,7 +366,7 @@ async def heartbeat():
 async def run_app():
     asyncio.create_task(heartbeat())
     asyncio.create_task(wifi_manager())
-    log.info(f"Starting Web Server on port {CONFIG['WEB_PORT']}...")
+    log.info(f"Starting Web Server (v1.1 Setup/Debug) on port {CONFIG['WEB_PORT']}...")
     await app.start_server(port=CONFIG["WEB_PORT"])
 
 if __name__ == '__main__':

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GIME Setup</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Michroma&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: #222;
+            color: #0f0;
+            font-family: 'VT323', monospace;
+            padding: 20px;
+            font-size: 1.2em;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            border: 2px solid #0f0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            border-bottom: 1px dashed #0f0;
+            font-family: 'Michroma', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            font-family: inherit;
+            font-size: 1.1em;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #0f0;
+            color: #000;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #0c0;
+        }
+
+        .nav {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        a {
+            color: #888;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        a:hover {
+            color: #fff;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>System Configuration</h1>
+        <div id="status">Loading...</div>
+
+        <div class="form-group">
+            <label>WiFi SSID</label>
+            <input type="text" id="ssid">
+        </div>
+        <div class="form-group">
+            <label>WiFi Password</label>
+            <input type="password" id="pass">
+        </div>
+        <div class="form-group">
+            <label>Serial Port</label>
+            <select id="uart">
+                <option value="0">UART 0 (GP0 TX / GP1 RX)</option>
+                <option value="1">UART 1 (GP4 TX / GP5 RX)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>UART Baud Rate</label>
+            <select id="baud">
+                <option value="300">300</option>
+                <option value="1200">1200</option>
+                <option value="2400">2400</option>
+                <option value="4800">4800</option>
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200">115200</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Watchdog Timer</label>
+            <select id="wdt">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+            </select>
+        </div>
+
+        <button onclick="saveConfig()">SAVE & REBOOT</button>
+
+        <div class="nav">
+            <a href="/">Terminal</a> | <a href="/debug">Diagnostics</a>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = {};
+
+        async function load() {
+            try {
+                const res = await fetch('/api/config');
+                currentConfig = await res.json();
+
+                document.getElementById('ssid').value = currentConfig.SSID;
+                document.getElementById('pass').value = currentConfig.PASS;
+                document.getElementById('baud').value = currentConfig.BAUD;
+                // Default to 0 if missing
+                document.getElementById('uart').value = currentConfig.UART_ID || 0;
+                document.getElementById('wdt').value = currentConfig.WDT_ENABLED;
+                document.getElementById('status').innerText = "";
+            } catch (e) {
+                document.getElementById('status').innerText = "Load Failed: " + e;
+            }
+        }
+
+        async function saveConfig() {
+            const newConfig = { ...currentConfig };
+            newConfig.SSID = document.getElementById('ssid').value;
+            newConfig.PASS = document.getElementById('pass').value;
+            newConfig.BAUD = parseInt(document.getElementById('baud').value);
+            newConfig.UART_ID = parseInt(document.getElementById('uart').value);
+            // Convert string "true"/"false" to boolean
+            newConfig.WDT_ENABLED = document.getElementById('wdt').value === "true";
+
+            try {
+                document.getElementById('status').innerText = "Saving...";
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+                alert("Saved! Device is rebooting...");
+            } catch (e) {
+                alert("Error saving: " + e);
+            }
+        }
+
+        load();
+    </script>
+</body>
+
+</html>

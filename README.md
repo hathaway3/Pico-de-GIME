@@ -54,8 +54,30 @@ Upload the following files to the root of your Pico W:
 - `main.py`
 - `dependency_manager.py`
 - `index.html`
+- `setup.html`
+- `debug.html`
 - `config.json`
 - `lib/` (if using Option B)
+
+## Web Interface
+
+### 1. Terminal Console (Main Page)
+The default view acts as the display for your CoCo 3. It supports the custom WindInt protocol for graphics and text positioning.
+
+### 2. System Configuration (`/setup`)
+Click **[ SETUP ]** at the top of the terminal to access configuration.
+-   **WiFi**: Update SSID and Password.
+-   **Serial Port**: Select which hardware UART to use:
+    -   **UART 0**: TX=GP0, RX=GP1 (Default)
+    -   **UART 1**: TX=GP4, RX=GP5
+-   **Baud Rate**: Set communication speed (300 - 115200).
+-   **Watchdog**: Enable/Disable the system reliability timer.
+
+### 3. Diagnostics (`/debug`)
+Click **[ DEBUG ]** to view system health.
+-   **Stats**: Uptime, Free RAM, and WiFi Signal Strength.
+-   **Counters**: Real-time count of Bytes Sent/Received.
+-   **Logs**: View the last 20 internal system events.
 
 ## Usage
 1.  **Power on** the Pico W.

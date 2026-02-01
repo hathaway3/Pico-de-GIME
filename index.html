@@ -14,6 +14,13 @@
             color: #ddd;
             font-family: 'VT323', monospace;
             box-sizing: border-box;
+            min-height: 100vh;
+            margin: 0;
+            padding-top: 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
         }
 
         #container {
@@ -25,11 +32,15 @@
             margin: 20px auto;
         }
 
-        canvas,
-        #terminal {
+        canvas {
             position: absolute;
             top: 0;
             left: 0;
+            pointer-events: none;
+        }
+
+        #terminal {
+            position: relative;
         }
 
         #terminal {
@@ -79,6 +90,11 @@
         <div class="key-row"><span>PC Delete</span><span>OS-9 Erase Line (0x18)</span></div>
         <div class="key-row"><span>PC F1</span><span>Toggle This Help</span></div>
         <p style="text-align:center; color:#aaa;">Press F1 to close</p>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 20px; font-family: 'VT323', monospace; width: 100%;">
+        <a href="/setup" style="color: #666; text-decoration: none; margin: 0 10px;">[ SETUP ]</a>
+        <a href="/debug" style="color: #666; text-decoration: none; margin: 0 10px;">[ DEBUG ]</a>
     </div>
 
     <div id="container">

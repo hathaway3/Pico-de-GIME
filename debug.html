@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GIME Diagnostics</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Michroma&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: #222;
+            color: #0f0;
+            font-family: 'VT323', monospace;
+            padding: 20px;
+            font-size: 1.2em;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #0f0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            border-bottom: 1px dashed #0f0;
+            margin-top: 0;
+            font-family: 'Michroma', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            border: 1px solid #444;
+            padding: 10px;
+            background: #111;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .log-box {
+            height: 300px;
+            overflow-y: scroll;
+            background: #000;
+            border: 1px solid #0f0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .log-line {
+            margin: 2px 0;
+            border-bottom: 1px solid #222;
+        }
+
+        .nav {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        a {
+            color: #888;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        a:hover {
+            color: #fff;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>System Diagnostics</h1>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="uptime">0s</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Free RAM</div>
+                <div class="stat-value" id="ram">0 B</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">WiFi Signal</div>
+                <div class="stat-value" id="rssi">-</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Data Transfer</div>
+                <div class="stat-value">
+                    TX: <span id="tx">0</span> / RX: <span id="rx">0</span>
+                </div>
+            </div>
+        </div>
+
+        <h3>System Logs (Last 20)</h3>
+        <div class="log-box" id="logs">
+            Loading...
+        </div>
+
+        <div class="nav">
+            <a href="/">Terminal</a> | <a href="/setup">Setup</a>
+        </div>
+    </div>
+
+    <script>
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function update() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                document.getElementById('uptime').innerText = Math.floor(data.uptime) + "s";
+                document.getElementById('ram').innerText = formatBytes(data.free_ram);
+                document.getElementById('rssi').innerText = data.rssi + " dBm";
+                document.getElementById('tx').innerText = data.tx_bytes;
+                document.getElementById('rx').innerText = data.rx_bytes;
+
+                const logHtml = data.logs.map(l => `<div class="log-line">${l}</div>`).join('');
+                document.getElementById('logs').innerHTML = logHtml;
+            } catch (e) {
+                console.error("Poll error", e);
+            }
+        }
+
+        setInterval(update, 2000);
+        update();
+    </script>
+</body>
+
+</html>
