@@ -8,10 +8,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Michroma&display=swap" rel="stylesheet">
     <style>
         body {
-            background: #111;
-            color: #ddd;
+            background: #222;
+            color: #0f0;
             font-family: 'VT323', monospace;
             box-sizing: border-box;
             min-height: 100vh;
@@ -21,6 +22,46 @@
             flex-direction: column;
             justify-content: flex-start;
             align-items: center;
+        }
+
+        .frame {
+            border: 2px solid #0f0;
+            padding: 20px;
+            background: #000;
+            /* Keep terminal area black */
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+        }
+
+        h1 {
+            font-family: 'Michroma', sans-serif;
+            text-transform: uppercase;
+            text-align: center;
+            margin: 0 0 10px 0;
+            font-size: 1.5em;
+            letter-spacing: 2px;
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-bottom: 15px;
+            font-family: 'Michroma', sans-serif;
+            font-size: 0.8em;
+        }
+
+        a {
+            color: #0f0;
+            text-decoration: none;
+            margin: 0 15px;
+            border: 1px solid #0f0;
+            padding: 5px 10px;
+            transition: all 0.2s;
+        }
+
+        a:hover {
+            background: #0f0;
+            color: #000;
         }
 
         #container {
@@ -92,15 +133,18 @@
         <p style="text-align:center; color:#aaa;">Press F1 to close</p>
     </div>
 
-    <div style="text-align: center; margin-bottom: 20px; font-family: 'VT323', monospace; width: 100%;">
-        <a href="/setup" style="color: #666; text-decoration: none; margin: 0 10px;">[ SETUP ]</a>
-        <a href="/debug" style="color: #666; text-decoration: none; margin: 0 10px;">[ DEBUG ]</a>
-    </div>
+    <div class="frame">
+        <h1>Pico-de-GIME</h1>
+        <div class="nav-links">
+            <a href="/setup">SETUP</a>
+            <a href="/debug">DIAGNOSTICS</a>
+        </div>
 
-    <div id="container">
-        <!-- Canvas size will be set by JS to match terminal -->
-        <canvas id="gfxLayer"></canvas>
-        <div id="terminal"></div>
+        <div id="container">
+            <!-- Canvas size will be set by JS to match terminal -->
+            <canvas id="gfxLayer"></canvas>
+            <div id="terminal"></div>
+        </div>
     </div>
 
     <script>

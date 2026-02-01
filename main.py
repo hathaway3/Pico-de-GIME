@@ -247,6 +247,66 @@ async def page_debug(request):
     return send_file('debug.html')
 
 # --- API ---
+@app.route('/api/autobaud')
+async def api_autobaud(request):
+    global uart
+    rates = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
+    scores = {}
+    
+    # Get current pins based on config
+    uid = CONFIG.get("UART_ID", 0)
+    # Using the same mapping logic as hardware init
+    # Note: Ideally this mapping should be a global helper, but duplicating for safety/simplicity here
+    uart_pins = {0: (0, 1), 1: (4, 5)} 
+    tx_p, rx_p = uart_pins.get(uid, (0, 1))
+    
+    log.info("Starting Auto-Baud Scan...")
+    
+    best_rate = CONFIG["BAUD"]
+    max_score = -1000
+    
+    original_baud = CONFIG["BAUD"]
+
+    try:
+        for rate in rates:
+            # Re-init UART at new rate
+            # We use a short timeout for the scan
+            uart = machine.UART(uid, baudrate=rate, tx=machine.Pin(tx_p), rx=machine.Pin(rx_p), timeout=200)
+            
+            # Flush input
+            while uart.any(): uart.read()
+            
+            # Listen for a short window
+            await asyncio.sleep(0.3) 
+            
+            score = 0
+            if uart.any():
+                data = uart.read(64) # Read up to 64 bytes
+                if data:
+                    for b in data:
+                        # Scoring Heuristic
+                        if 32 <= b <= 126: score += 1 # Printable ASCII
+                        elif b in (10, 13): score += 2 # Newlines are very good
+                        elif b == 0: score -= 5 # Nulls are usually bad framing
+                        elif b > 127: score -= 2 # High bits often mean wrong baud
+                        else: score -= 1 # Other control chars
+            
+            log.info(f"Rate: {rate}, Score: {score}")
+            scores[rate] = score
+            
+            if score > max_score and score > 0: # Threshold of 0 to ensure we actually saw *some* good data
+                max_score = score
+                best_rate = rate
+
+    except Exception as e:
+        log.error(f"Autobaud Error: {e}")
+        
+    # Restore original (or user will save the new one via UI)
+    log.info(f"Auto-Baud Cycle Complete. Winner: {best_rate}")
+    uart = machine.UART(uid, baudrate=original_baud, tx=machine.Pin(tx_p), rx=machine.Pin(rx_p), timeout=0)
+    
+    return json.dumps({"detected": best_rate, "scores": scores}), 200, {'Content-Type': 'application/json'}
+
 @app.route('/api/status')
 async def api_status(request):
     gc.collect() # Force cleanup to get a stable base reading
@@ -377,7 +437,7 @@ async def heartbeat():
 async def run_app():
     asyncio.create_task(heartbeat())
     asyncio.create_task(wifi_manager())
-    log.info(f"Starting Web Server (v1.1 Setup/Debug) on port {CONFIG['WEB_PORT']}...")
+    log.info(f"Starting Web Server (Pico-GIME v1.2 Auto-Baud) on port {CONFIG['WEB_PORT']}...")
     await app.start_server(port=CONFIG["WEB_PORT"])
 
 if __name__ == '__main__':
