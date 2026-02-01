@@ -4,18 +4,22 @@
 <head>
     <title>CoCo 3 Remote WindInt</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
     <style>
         body {
             background: #111;
             color: #ddd;
-            font-family: sans-serif;
+            font-family: 'VT323', monospace;
+            box-sizing: border-box;
         }
 
         #container {
             position: relative;
-            width: 640px;
-            height: 400px;
+            display: inline-block;
+            /* Allow container to shrink-wrap content */
             background: black;
             border: 1px solid #444;
             margin: 20px auto;
@@ -35,6 +39,11 @@
         .xterm-viewport,
         .xterm-screen {
             background: transparent !important;
+        }
+
+        .xterm-viewport {
+            overflow: hidden !important;
+            /* Hide scrollbar to prevent width issues */
         }
 
         #helpOverlay {
@@ -73,29 +82,65 @@
     </div>
 
     <div id="container">
-        <canvas id="gfxLayer" width="640" height="400"></canvas>
+        <!-- Canvas size will be set by JS to match terminal -->
+        <canvas id="gfxLayer"></canvas>
         <div id="terminal"></div>
     </div>
 
     <script>
         const canvas = document.getElementById('gfxLayer');
         const ctx = canvas.getContext('2d');
-        const term = new Terminal({ cols: 80, rows: 24, theme: { background: 'transparent' } });
-        term.open(document.getElementById('terminal'));
-
         let pen = { x: 0, y: 0, color: '#FFFFFF' };
+        let term; // Global for access if needed
+
+        // Wait for fonts to be ready/loaded before initializing terminal to get correct metrics
+        document.fonts.ready.then(() => {
+            // Initialize terminal with specific font settings for consistent sizing
+            term = new Terminal({
+                cols: 80,
+                rows: 24,
+                fontFamily: "'VT323', monospace",
+                fontSize: 22, // VT323 is condensed, so 20-22px looks best
+                letterSpacing: 0,
+                lineHeight: 1.0,
+                theme: { background: 'transparent' },
+                lineHeight: 1.0,
+                theme: { background: 'transparent' },
+                scrollback: 0, // Assume fixed screen
+                convertEol: true // Treat \n as \r\n
+            });
+
+            const termContainer = document.getElementById('terminal');
+            term.open(termContainer);
+
+            // Force resize to ensure internal state is correct
+            term.resize(80, 24);
+
+            // SYNC: Set canvas and container size to match the rendered terminal exactly
+            // We defer slightly to ensure the DOM has calculated layout
+            setTimeout(() => {
+                const width = termContainer.offsetWidth;
+                const height = termContainer.offsetHeight;
+
+                canvas.width = width;
+                canvas.height = height;
+
+                console.log(`GIME Terminal Initialized: ${width}x${height}`);
+            }, 100);
+        });
+
         const socket = new WebSocket('ws://' + location.host + '/ws');
 
         const splashArt = `
-\x1b[32m  _____  _              \x1b[33m     _               \x1b[31m  _____  _____ __  __ ______ 
-\x1b[32m |  __ \\(_)             \x1b[33m    | |              \x1b[31m / ____||_   _|  \\/  |  ____|
-\x1b[32m | |__) |_  ___ ___     \x1b[33m  __| | ___          \x1b[31m| |  __   | | | \\  / | |__   
-\x1b[32m |  ___/| |/ __/ _ \\    \x1b[33m / _\` |/ _ \\         \x1b[31m| | |_ |  | | | |\\/| |  __|  
-\x1b[32m | |    | | (_| (_) |   \x1b[33m| (_| |  __/         \x1b[31m| |__| | _| |_| |  | | |____ 
-\x1b[32m |_|    |_|\\___\\___/    \x1b[33m \\__,_|\\___|         \x1b[31m \\_____||_____|_|  |_|______|
+\x1b[32m  _____  _                   _        \x1b[31m_____ _____ __  __ ______ 
+\x1b[32m |  __ \\(_)                 | |      \x1b[31m/ ____|_   _|  \\/  |  ____|
+\x1b[32m | |__) |_  ___ ___       __| | ___ \x1b[31m| |  __  | | | \\  / | |__   
+\x1b[32m |  ___/| |/ __/ _ \\     / _\` |/ _ \\\x1b[31m| | |_ | | | | |\\/| |  __|  
+\x1b[32m | |    | | (_| (_) |   | (_| |  __/\x1b[31m| |__| |_| |_| |  | | |____ 
+\x1b[32m |_|    |_|\\___\\___/     \\__,_|\\___| \x1b[31m\\_____|_____|_|  |_|______|
 \x1b[0m
-          \x1b[1m-- Wireless WindInt Terminal Bridge for CoCo 3 --\x1b[0m
-             \x1b[3m"Spicing up the 6809 experience since 2026"\x1b[0m
+\x1b[1m          -- Wireless WindInt Terminal Bridge for CoCo 3 --\x1b[0m
+\x1b[3m             "Spicing up the 6809 experience since 2026"\x1b[0m
 \x1b[90m--------------------------------------------------------------------------------\x1b[0m
 `;
 

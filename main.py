@@ -1,16 +1,16 @@
+import sys
+# Add lib to path if not present (needed before other imports that live in /lib)
+if '/lib' not in sys.path:
+    sys.path.append('/lib')
+
 import machine
 import network
 import uasyncio as asyncio
 import json
 import gc
-import sys
 import time
 import os
 import dependency_manager
-
-# Add lib to path if not present
-if '/lib' not in sys.path:
-    sys.path.append('/lib')
 
 # Debug: Print Path
 print(f"BM: sys.path: {sys.path}")
@@ -24,7 +24,8 @@ DEFAULT_CONFIG = {
     "BAUD": 9600,
     "X_OFFSET": 32,
     "Y_OFFSET": 32,
-    "WEB_PORT": 80
+    "WEB_PORT": 80,
+    "WDT_ENABLED": True
 }
 
 def load_config():
@@ -117,7 +118,11 @@ log = Logger()
 # --- HARDWARE INITIALIZATION ---
 try:
     uart = machine.UART(CONFIG["UART_ID"], baudrate=CONFIG["BAUD"], tx=machine.Pin(0), rx=machine.Pin(1), timeout=0)
-    wdt = machine.WDT(timeout=8000) # Watchdog timer (8 seconds)
+    if CONFIG.get("WDT_ENABLED", True):
+        wdt = machine.WDT(timeout=8000) # Watchdog timer (8 seconds)
+    else:
+        wdt = None
+        log.warn("Watchdog Timer DISABLED by config.")
 except Exception as e:
     log.error(f"Hardware Params Init Failed: {e}")
     # Fatal error, but maybe we can still run without UART? typically no.
@@ -211,11 +216,12 @@ async def coco_socket(request, ws):
     await ws.send(json.dumps({"status": "BOOT_READY"}))
     protocol = WindIntProtocol()
     
+
     # Task: UART -> Browser
     async def uart_to_browser():
         try:
             while True:
-                wdt.feed()
+                # wdt.feed() handled by global heartbeat
                 if uart.any():
                     chunk = uart.read()
                     if chunk:
@@ -266,7 +272,19 @@ async def wifi_manager():
             log.error(f"WiFi Manager Error: {e}")
             await asyncio.sleep(5)
 
+async def heartbeat():
+    """Feeds the watchdog timer to keep the system alive."""
+    if wdt is None:
+        log.info("Heartbeat task skipped (WDT disabled).")
+        return
+        
+    log.info("Heartbeat task started.")
+    while True:
+        wdt.feed()
+        await asyncio.sleep(1)
+
 async def run_app():
+    asyncio.create_task(heartbeat())
     asyncio.create_task(wifi_manager())
     log.info(f"Starting Web Server on port {CONFIG['WEB_PORT']}...")
     await app.start_server(port=CONFIG["WEB_PORT"])
