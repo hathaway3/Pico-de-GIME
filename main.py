@@ -327,30 +327,41 @@ async def coco_socket(request, ws):
         log.info("Client disconnected")
 
 async def wifi_manager():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
+    wlan_sta = network.WLAN(network.STA_IF)
+    wlan_sta.active(True)
+    
+    # Try to connect
+    log.info(f"Connecting to WiFi: {CONFIG['SSID']}...")
+    try:
+        wlan_sta.connect(CONFIG["SSID"], CONFIG["PASS"])
+    except OSError as e:
+        log.error(f"WiFi Connection Error: {e}")
+
+    # Wait for connection (30 seconds timeout)
+    for i in range(30):
+        if wlan_sta.isconnected():
+            break
+        await asyncio.sleep(1)
+        
+    if wlan_sta.isconnected():
+        log.info(f"WiFi Connected: {wlan_sta.ifconfig()[0]}")
+    else:
+        log.warn("WiFi Connection Failed. Enabling RESCUE MODE (AP).")
+        wlan_sta.active(False) # Disable STA to save power/conflicts
+        
+        # Enable Access Point
+        wlan_ap = network.WLAN(network.AP_IF)
+        wlan_ap.active(True)
+        wlan_ap.config(essid='Pico-GIME-Rescue', security=0) # Explicitly OPEN
+        
+        log.warn("!! RESCUE MODE ACTIVE !!")
+        log.warn("Connect to WiFi: 'Pico-GIME-Rescue'")
+        log.warn(f"Go to: http://{wlan_ap.ifconfig()[0]} to fix config.")
+
+    # Periodic GC loop
     while True:
-        try:
-            if not wlan.isconnected():
-                log.info("Connecting to Wi-Fi...")
-                wlan.connect(CONFIG["SSID"], CONFIG["PASS"])
-                
-                # Wait for connection
-                for _ in range(20):
-                    if wlan.isconnected(): break
-                    await asyncio.sleep(0.5)
-                
-                if wlan.isconnected():
-                    log.info(f"WiFi Connected: {wlan.ifconfig()[0]}")
-                else:
-                    log.warn("WiFi Connection Failed. Retrying...")
-            
-            # Periodic GC
-            gc.collect()
-            await asyncio.sleep(30)
-        except Exception as e:
-            log.error(f"WiFi Manager Error: {e}")
-            await asyncio.sleep(5)
+        gc.collect()
+        await asyncio.sleep(30)
 
 async def heartbeat():
     """Feeds the watchdog timer to keep the system alive."""

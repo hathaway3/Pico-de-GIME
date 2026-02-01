@@ -89,5 +89,9 @@ Click **[ DEBUG ]** to view system health.
 
 ## Troubleshooting
 - **No Connection**: Check `config.json` credentials. Watch the USB serial output for `[ERROR]` logs.
+- **Rescue Mode**: If WiFi connection fails (wrong password or router down), the Pico will wait 30 seconds and then create its own WiFi network named **`Pico-GIME-Rescue`**.
+    1.  Connect to `Pico-GIME-Rescue`.
+    2.  Go to `http://192.168.4.1`.
+    3.  Use the **Setup** page to fix your WiFi settings.
 - **Garbage Text**: Verify `BAUD` rate matches your CoCo's serial settings.
 - **Missing Libraries**: Ensure `lib/` folder exists or valid WiFi credentials are provided for auto-install.
